@@ -432,3 +432,14 @@ console.log(sumof(1, 2, 3));
 
 console.log(sumof(1, 2, 3, 4));
 // Expected output: 10
+
+const user1 = {
+  age: 26,
+  mobile: 8801967402131,
+  name: "Talha"
+}
+const newObj = {
+  ...user1,
+  location: 'sylhet'
+}
+console.log(newObj)
