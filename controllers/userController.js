@@ -3,7 +3,6 @@ const { Users } = require("../models");
 const { createTokens } = require("../middleware/JWT");
 const fs = require("fs");
 const db = require("../models");
-const userDAL = require("./dataAccess");
 // const Joi = require('joi');
 // const { registerSchema, loginSchema } = require('../middleware/validate');
 
@@ -17,22 +16,33 @@ const UserController = {
     const password = req.body.password;
     const cpassword = req.body.cpassword;
 
-    try {
-      // const user = await userDAL.findUserByEmail(email);
+    const user = await Users.findOne({ where: { email: email } });
+    if (user) {
+      res.status(400).json({ error: "User already exist" });
+    }
 
-      // if (user.length > 0) {
-      //   return res.status(400).json({ error: "User already exists" });
-      // }
-
-      if (password === cpassword) {
-        const hash = await bcrypt.hash(password, 10);
-        await userDAL.createUser(username, email, role, hash);
-        return res.status(200).json({ message: "User registered" });
-      } else {
-        return res.status(400).json({ error: "Passwords do not match" });
-      }
-    } catch (error) {
-      return res.status(500).json({ error: "Internal Server Error" });
+    if (password === cpassword) {
+      bcrypt
+        .hash(password, 10)
+        .then((hash) => {
+          Users.create({
+            username: username,
+            email: email,
+            role: role,
+            password: hash,
+          })
+            .then(() => {
+              res.status(200).json({ message: "User Registered" });
+            })
+            .catch((err) => {
+              res.status(400).json({ error: err });
+            });
+        })
+        .catch((err) => {
+          res.status(500).json({ error: "Internal Server Error" });
+        });
+    } else {
+      res.status(400).json({ error: "Passwords do not match" });
     }
   },
 
@@ -40,20 +50,16 @@ const UserController = {
     const email = req.body.email;
     const password = req.body.password;
 
-    try {
-      const users = await userDAL.findUserByEmail(email);
-      console.log(users[0]);
-      const user = users[0];
+    const user = await Users.findOne({ where: { email: email } });
 
-      if (!user) {
-        return res.status(400).json({ error: "User Doesn't Exist" });
-      }
+    if (!user) {
+      res.status(400).json({ error: "User Doesn't Exist" });
+    }
 
-      const dbPassword = user.password;
-      const match = await bcrypt.compare(password, dbPassword);
-
+    const dbPassword = user.password;
+    bcrypt.compare(password, dbPassword).then((match) => {
       if (!match) {
-        return res
+        res
           .status(400)
           .json({ error: "Wrong email and Password Combination!" });
       } else {
@@ -63,31 +69,24 @@ const UserController = {
           maxAge: 60 * 60 * 60 * 1000,
           httpOnly: true,
         });
-        return res.status(200).json({ message: "Login Successful" });
+        res.status(200).json({ message: "Login Successful" });
       }
-    } catch (error) {
-      return res.status(500).json({ error: "Internal Server Error" });
-    }
+    });
   },
-
 
   uploadFiles: async (req, res) => {
     try {
-      const user = await Users.findOne({
-        where: { username: req.user.username },
-      });
+      const user = await Users.findOne({ where: { username: req.user.username } });
       const userEmail = user.email;
       if (user.role == "admin" || user.role == "developer") {
         if (req.file == undefined) {
-          return res.status(400).json({ error: "You must select a file." });
+          return res.status(400).json({error: 'You must select a file.'});
         }
         if (req.body.description == "" || req.body.description == null) {
-          return res.status(400).json({ error: "You must enter description." });
+          return res.status(400).json({error: 'You must enter description.'});
         }
         if (req.file.size > 1024 * 1024) {
-          return res
-            .status(400)
-            .json({ error: "File size must be less than 1MB." });
+          return res.status(400).json({error: 'File size must be less than 1MB.'});
         }
 
         Image.create({
@@ -103,20 +102,16 @@ const UserController = {
             "resources/static/assets/uploads/" + image.name,
             image.data
           );
-          return res.status(400).json({ message: "File has been uploaded." });
+          return res.status(400).json({message: 'File has been uploaded.'});
         });
       }
     } catch (error) {
       console.log(error);
-      return res
-        .status(400)
-        .json({ error: `Error when trying to upload images: ${error}` });
+      return res.status(400).json({error: `Error when trying to upload images: ${error}`});
     }
   },
   getFilesSpecificUser: async (req, res) => {
-    const user = await Users.findOne({
-      where: { username: req.user.username },
-    });
+    const user = await Users.findOne({ where: { username: req.user.username } });
     const userEmail = user.email;
     if (user.role == "developer") {
       const files = await Image.findAll({
@@ -125,16 +120,12 @@ const UserController = {
       });
       res.status(200).json(files);
     } else {
-      res
-        .status(403)
-        .json({ error: "You are not authorized to view this page" });
+      res.status(403).json({error: "You are not authorized to view this page"});
     }
   },
 
   getAllfiles: async (req, res) => {
-    const user = await Users.findOne({
-      where: { username: req.user.username },
-    });
+    const user = await Users.findOne({ where: { username: req.user.username } });
     if (user.role == "admin" || user.role == "guest") {
       const files = await Image.findAll({
         attributes: ["id", "name", "type", "description"],
@@ -145,9 +136,7 @@ const UserController = {
 
   deleteFile: async (req, res) => {
     const id = req.params.id;
-    const user = await Users.findOne({
-      where: { username: req.user.username },
-    });
+    const user = await Users.findOne({ where: { username: req.user.username } });
     if (user.role == "admin") {
       const file = await Image.findOne({
         where: { id: id },
@@ -169,9 +158,7 @@ const UserController = {
   },
   updateFile: async (req, res) => {
     const id = req.params.id;
-    const user = await Users.findOne({
-      where: { username: req.user.username },
-    });
+    const user = await Users.findOne({ where: { username: req.user.username } });
     if (user.role == "admin") {
       const file = await Image.findOne({
         where: { id: id },
@@ -201,4 +188,3 @@ const UserController = {
 };
 
 module.exports = UserController;
-
